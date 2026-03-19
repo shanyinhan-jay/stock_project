@@ -2,29 +2,29 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>新建任务</title>
+  <title>{{ page_title or '新建任务' }}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container narrow">
-    <h1>新建任务</h1>
-    <form method="post" action="/tasks/new" class="card">
+    <h1>{{ page_title or '新建任务' }}</h1>
+    <form method="post" action="{{ form_action or '/tasks/new' }}" class="card">
       <label>任务名称</label>
-      <input name="name" placeholder="例如：上证股票日更" required>
+      <input name="name" placeholder="例如：上证股票日更" value="{{ task.name if task else '' }}" required>
       <label>股票代码</label>
-      <textarea name="symbols_text" rows="8" placeholder="每行一个，或逗号分隔，支持带引号格式，例如&#10;&quot;000001.SZ&quot;, &quot;000002.SZ&quot;, &quot;000004.SZ&quot;" required></textarea>
+      <textarea name="symbols_text" rows="8" placeholder="每行一个，或逗号分隔，支持带引号格式，例如&#10;&quot;000001.SZ&quot;, &quot;000002.SZ&quot;, &quot;000004.SZ&quot;" required>{{ symbols_text or "" }}</textarea>
       <label>更新窗口天数</label>
-      <input type="number" name="window_days" value="7" min="1" max="365">
+      <input type="number" name="window_days" value="{{ task.window_days if task else 7 }}" min="1" max="365">
       <label>执行小时</label>
-      <input type="number" name="hour" value="18" min="0" max="23">
+      <input type="number" name="hour" value="{{ task.hour if task else 18 }}" min="0" max="23">
       <label>执行分钟</label>
-      <input type="number" name="minute" value="30" min="0" max="59">
+      <input type="number" name="minute" value="{{ task.minute if task else 30 }}" min="0" max="59">
       <label>星期</label>
-      <input name="weekdays" value="mon-fri" placeholder="例如 mon-fri 或 mon,wed,fri">
-      <label class="check"><input type="checkbox" name="sync_adj_factor" checked> 同步复权因子</label>
-      <label class="check"><input type="checkbox" name="enabled" checked> 创建后立即启用</label>
+      <input name="weekdays" value="{{ task.weekdays if task else 'mon-fri' }}" placeholder="例如 mon-fri 或 mon,wed,fri">
+      <label class="check"><input type="checkbox" name="sync_adj_factor" {% if task %}{% if task.sync_adj_factor %}checked{% endif %}{% else %}checked{% endif %}> 同步复权因子</label>
+      <label class="check"><input type="checkbox" name="enabled" {% if task %}{% if task.enabled %}checked{% endif %}{% else %}checked{% endif %}> {{ "编辑后保持启用" if task else "创建后立即启用" }}</label>
       <div class="row">
-        <button type="submit">保存任务</button>
+        <button type="submit">{{ submit_label or "保存任务" }}</button>
         <a class="button secondary" href="/">返回</a>
       </div>
     </form>

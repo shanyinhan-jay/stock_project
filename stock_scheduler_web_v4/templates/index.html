@@ -37,6 +37,7 @@
           <td>{{ t.weekdays }}</td>
           <td>{{ "启用" if t.enabled else "停用" }}</td>
           <td class="actions">
+            <a class="button secondary" href="/tasks/{{ t.id }}/edit">编辑</a>
             <form method="post" action="/tasks/{{ t.id }}/toggle"><button type="submit">{{ "停用" if t.enabled else "启用" }}</button></form>
             <form method="post" action="/tasks/{{ t.id }}/run"><button type="submit">立即执行</button></form>
             <form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('确定删除这个任务吗？');"><button type="submit" class="danger">删除</button></form>

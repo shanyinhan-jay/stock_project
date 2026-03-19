@@ -4,6 +4,27 @@
   <meta charset="utf-8">
   <title>三日形态筛选</title>
   <link rel="stylesheet" href="/static/style.css">
+
+  <style>
+    #result-table {
+      font-size: 12px;
+      table-layout: auto;
+      width: max-content;
+      min-width: 100%;
+    }
+    #result-table th,
+    #result-table td {
+      white-space: nowrap;
+      padding: 6px 10px;
+      vertical-align: top;
+    }
+    #result-table th.name-col,
+    #result-table td.name-col {
+      min-width: 140px;
+      max-width: 220px;
+    }
+  </style>
+
 </head>
 <body>
   <div class="container">
@@ -150,6 +171,17 @@ document.getElementById("screen-form").addEventListener("submit", async (e) => {
     tbody.innerHTML = rows.slice(0, 300).map(r => {
       return "<tr>" + columns.map(c => `<td>${r[c] ?? ""}</td>`).join("") + "</tr>";
     }).join("");
+
+    const nameIndex = columns.indexOf("name");
+    if (nameIndex >= 0) {
+      const nameTh = thead.querySelector(`th:nth-child(${nameIndex + 1})`);
+      if (nameTh) nameTh.classList.add("name-col");
+      tbody.querySelectorAll("tr").forEach(tr => {
+        const td = tr.querySelector(`td:nth-child(${nameIndex + 1})`);
+        if (td) td.classList.add("name-col");
+      });
+    }
+
   } catch (err) {
     document.getElementById("summary").innerText = "请求失败: " + err;
   }

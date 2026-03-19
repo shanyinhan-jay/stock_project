@@ -93,6 +93,33 @@ def load_task(task_id: int):
     return row
 
 
+def parse_symbols_text(symbols_text: str):
+    normalized_text = (
+        symbols_text
+        .replace("，", ",")
+        .replace("；", ",")
+        .replace(";", ",")
+        .replace("\t", ",")
+        .replace("\n", ",")
+    )
+    raw_symbols = [s.strip() for s in normalized_text.split(",")]
+    symbols = [s.strip().strip('"').strip("'").upper() for s in raw_symbols if s.strip()]
+    if not symbols:
+        raise HTTPException(status_code=400, detail="symbols 不能为空")
+
+    symbol_pattern = re.compile(r"^\d{6}\.(SZ|SH|BJ)$")
+    invalid_symbols = [s for s in symbols if not symbol_pattern.match(s)]
+    if invalid_symbols:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "股票代码格式错误，需与 Batch Sync Daily 保持一致，例如 "
+                '"000001.SZ", "000002.SZ", "000004.SZ"；错误项: ' + ", ".join(invalid_symbols[:20])
+            ),
+        )
+    return symbols
+
+
 def run_task(task_id: int):
     task = load_task(task_id)
     if not task:
@@ -226,7 +253,17 @@ def proxy_screen_new_high(
 
 @app.get("/tasks/new", response_class=HTMLResponse)
 def new_task_page(request: Request):
-    return templates.TemplateResponse("new_task.html", {"request": request})
+    return templates.TemplateResponse(
+        "new_task.html",
+        {
+            "request": request,
+            "page_title": "新建任务",
+            "form_action": "/tasks/new",
+            "submit_label": "保存任务",
+            "task": None,
+            "symbols_text": "",
+        },
+    )
 
 
 @app.post("/tasks/new")
@@ -240,29 +277,7 @@ def create_task(
     weekdays: str = Form("mon-fri"),
     enabled: Optional[str] = Form(None),
 ):
-    normalized_text = (
-        symbols_text
-        .replace("，", ",")
-        .replace("；", ",")
-        .replace(";", ",")
-        .replace("\t", ",")
-        .replace("\n", ",")
-    )
-    raw_symbols = [s.strip() for s in normalized_text.split(",")]
-    symbols = [s.strip().strip('"').strip("'").upper() for s in raw_symbols if s.strip()]
-    if not symbols:
-        raise HTTPException(status_code=400, detail="symbols 不能为空")
-
-    symbol_pattern = re.compile(r"^\d{6}\.(SZ|SH|BJ)$")
-    invalid_symbols = [s for s in symbols if not symbol_pattern.match(s)]
-    if invalid_symbols:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "股票代码格式错误，需与 Batch Sync Daily 保持一致，例如 "
-                '"000001.SZ", "000002.SZ", "000004.SZ"；错误项: ' + ", ".join(invalid_symbols[:20])
-            ),
-        )
+    symbols = parse_symbols_text(symbols_text)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -291,6 +306,71 @@ def create_task(
     schedule_task(task)
     return RedirectResponse("/", status_code=303)
 
+
+
+
+@app.get("/tasks/{task_id}/edit", response_class=HTMLResponse)
+def edit_task_page(task_id: int, request: Request):
+    task = load_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+    symbols = json.loads(task["symbols_json"])
+    return templates.TemplateResponse(
+        "new_task.html",
+        {
+            "request": request,
+            "page_title": "编辑任务",
+            "form_action": f"/tasks/{task_id}/edit",
+            "submit_label": "保存修改",
+            "task": task,
+            "symbols_text": ", ".join([f'"{s}"' for s in symbols]),
+        },
+    )
+
+
+@app.post("/tasks/{task_id}/edit")
+def update_task(
+    task_id: int,
+    name: str = Form(...),
+    symbols_text: str = Form(...),
+    window_days: int = Form(7),
+    sync_adj_factor: Optional[str] = Form(None),
+    hour: int = Form(18),
+    minute: int = Form(30),
+    weekdays: str = Form("mon-fri"),
+    enabled: Optional[str] = Form(None),
+):
+    task = load_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+
+    symbols = parse_symbols_text(symbols_text)
+
+    conn = get_conn()
+    conn.execute(
+        """
+        UPDATE tasks
+        SET name = ?, symbols_json = ?, window_days = ?, sync_adj_factor = ?, hour = ?, minute = ?, weekdays = ?, enabled = ?
+        WHERE id = ?
+        """,
+        (
+            name.strip(),
+            json.dumps(symbols, ensure_ascii=False),
+            window_days,
+            1 if sync_adj_factor else 0,
+            hour,
+            minute,
+            weekdays,
+            1 if enabled else 0,
+            task_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    task = load_task(task_id)
+    schedule_task(task)
+    return RedirectResponse("/", status_code=303)
 
 @app.post("/tasks/{task_id}/toggle")
 def toggle_task(task_id: int):
@@ -328,42 +408,3 @@ def delete_task(task_id: int):
     conn.commit()
     conn.close()
     return RedirectResponse("/", status_code=303)
-
-
-
-@app.get("/screen/bullish-engulfing-volume", response_class=HTMLResponse)
-def screen_bullish_engulfing_volume_page(request: Request):
-    return templates.TemplateResponse(
-        "screen_bullish_engulfing_volume.html",
-        {
-            "request": request,
-            "stock_api_base_url": STOCK_API_BASE_URL,
-        },
-    )
-
-
-@app.post("/api/proxy/screen/bullish-engulfing-volume")
-def proxy_screen_bullish_engulfing_volume(
-    trade_date: str = Query(...),
-    adj: str = Query("qfq"),
-    include_name: bool = Query(True),
-    volume_mode: str = Query("any"),
-    min_body_pct: float = Query(0.01),
-):
-    url = f"{STOCK_API_BASE_URL}/screen/bullish-engulfing-volume"
-    params = {
-        "trade_date": trade_date,
-        "adj": adj,
-        "include_name": str(include_name).lower(),
-        "volume_mode": volume_mode,
-        "min_body_pct": min_body_pct,
-    }
-    try:
-        resp = requests.get(url, params=params, timeout=300)
-        try:
-            payload = resp.json()
-        except Exception:
-            payload = {"detail": resp.text or "upstream returned non-json response"}
-        return JSONResponse(status_code=resp.status_code, content=payload)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")
