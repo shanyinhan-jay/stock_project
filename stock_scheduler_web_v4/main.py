@@ -1,6 +1,8 @@
+
 import json
 import os
 import sqlite3
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -193,17 +195,6 @@ def screen_new_high_page(request: Request):
     )
 
 
-@app.get("/screen/three-day-pattern", response_class=HTMLResponse)
-def screen_three_day_pattern_page(request: Request):
-    return templates.TemplateResponse(
-        "screen_three_day_pattern.html",
-        {
-            "request": request,
-            "stock_api_base_url": STOCK_API_BASE_URL,
-        },
-    )
-
-
 @app.post("/api/proxy/screen/new-high")
 def proxy_screen_new_high(
     trade_date: str = Query(...),
@@ -212,7 +203,6 @@ def proxy_screen_new_high(
     adj: str = Query("qfq"),
     price_field: str = Query("high"),
     include_name: bool = Query(True),
-    upper_shadow_filter: str = Query("any"),
 ):
     url = f"{STOCK_API_BASE_URL}/screen/new-high"
     params = {
@@ -221,30 +211,6 @@ def proxy_screen_new_high(
         "recent_days": recent_days,
         "adj": adj,
         "price_field": price_field,
-        "include_name": str(include_name).lower(),
-        "upper_shadow_filter": upper_shadow_filter,
-    }
-    try:
-        resp = requests.get(url, params=params, timeout=300)
-        try:
-            payload = resp.json()
-        except Exception:
-            payload = {"detail": resp.text or "upstream returned non-json response"}
-        return JSONResponse(status_code=resp.status_code, content=payload)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")
-
-
-@app.post("/api/proxy/screen/three-day-pattern")
-def proxy_screen_three_day_pattern(
-    trade_date: str = Query(...),
-    adj: str = Query("qfq"),
-    include_name: bool = Query(True),
-):
-    url = f"{STOCK_API_BASE_URL}/screen/three-day-pattern"
-    params = {
-        "trade_date": trade_date,
-        "adj": adj,
         "include_name": str(include_name).lower(),
     }
     try:
@@ -274,10 +240,29 @@ def create_task(
     weekdays: str = Form("mon-fri"),
     enabled: Optional[str] = Form(None),
 ):
-    raw_symbols = [s.strip() for s in symbols_text.replace("\n", ",").split(",")]
-    symbols = [s for s in raw_symbols if s]
+    normalized_text = (
+        symbols_text
+        .replace("，", ",")
+        .replace("；", ",")
+        .replace(";", ",")
+        .replace("\t", ",")
+        .replace("\n", ",")
+    )
+    raw_symbols = [s.strip() for s in normalized_text.split(",")]
+    symbols = [s.strip().strip('"').strip("'").upper() for s in raw_symbols if s.strip()]
     if not symbols:
         raise HTTPException(status_code=400, detail="symbols 不能为空")
+
+    symbol_pattern = re.compile(r"^\d{6}\.(SZ|SH|BJ)$")
+    invalid_symbols = [s for s in symbols if not symbol_pattern.match(s)]
+    if invalid_symbols:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "股票代码格式错误，需与 Batch Sync Daily 保持一致，例如 "
+                '"000001.SZ", "000002.SZ", "000004.SZ"；错误项: ' + ", ".join(invalid_symbols[:20])
+            ),
+        )
 
     conn = get_conn()
     cur = conn.cursor()
@@ -343,3 +328,42 @@ def delete_task(task_id: int):
     conn.commit()
     conn.close()
     return RedirectResponse("/", status_code=303)
+
+
+
+@app.get("/screen/bullish-engulfing-volume", response_class=HTMLResponse)
+def screen_bullish_engulfing_volume_page(request: Request):
+    return templates.TemplateResponse(
+        "screen_bullish_engulfing_volume.html",
+        {
+            "request": request,
+            "stock_api_base_url": STOCK_API_BASE_URL,
+        },
+    )
+
+
+@app.post("/api/proxy/screen/bullish-engulfing-volume")
+def proxy_screen_bullish_engulfing_volume(
+    trade_date: str = Query(...),
+    adj: str = Query("qfq"),
+    include_name: bool = Query(True),
+    volume_mode: str = Query("any"),
+    min_body_pct: float = Query(0.01),
+):
+    url = f"{STOCK_API_BASE_URL}/screen/bullish-engulfing-volume"
+    params = {
+        "trade_date": trade_date,
+        "adj": adj,
+        "include_name": str(include_name).lower(),
+        "volume_mode": volume_mode,
+        "min_body_pct": min_body_pct,
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=300)
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {"detail": resp.text or "upstream returned non-json response"}
+        return JSONResponse(status_code=resp.status_code, content=payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")

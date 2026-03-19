@@ -12,7 +12,7 @@
       <label>任务名称</label>
       <input name="name" placeholder="例如：上证股票日更" required>
       <label>股票代码</label>
-      <textarea name="symbols_text" rows="8" placeholder="每行一个，或逗号分隔，例如&#10;600645.SH&#10;600519.SH" required></textarea>
+      <textarea name="symbols_text" rows="8" placeholder="每行一个，或逗号分隔，支持带引号格式，例如&#10;&quot;000001.SZ&quot;, &quot;000002.SZ&quot;, &quot;000004.SZ&quot;" required></textarea>
       <label>更新窗口天数</label>
       <input type="number" name="window_days" value="7" min="1" max="365">
       <label>执行小时</label>
