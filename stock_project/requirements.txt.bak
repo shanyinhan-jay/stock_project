@@ -1,0 +1,10 @@
+duckdb
+pandas
+pyarrow
+akshare
+fastapi
+uvicorn
+tushare
+pandas
+pyarrow
+tenacity

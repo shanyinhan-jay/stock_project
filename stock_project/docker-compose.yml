@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  stock-service:
+    build: .
+    container_name: stock_service
+    ports:
+      - "8000:8000"
+    environment:
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN}
+    volumes:
+      - ./data:/data
+      - ./app:/app
+      - ./logs:/logs
+    working_dir: /app
+    tty: true
+    stdin_open: true

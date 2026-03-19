@@ -1,0 +1,71 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>股票定时任务管理台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>股票定时任务管理台</h1>
+    <p class="muted">批量接口地址：{{ batch_api_url }}</p>
+    <p class="muted">股票 API 根地址：{{ stock_api_base_url }}</p>
+
+    <p>
+      <a class="button" href="/tasks/new">新建任务</a>
+      <a class="button" href="/screen/new-high">新高筛选</a>
+	  <a class="button" href="/screen/three-day-pattern">三日形态筛选</a>
+    </p>
+
+    <h2>任务列表</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>名称</th><th>窗口天数</th><th>复权因子</th><th>执行时间</th><th>星期</th><th>状态</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tasks %}
+        <tr>
+          <td>{{ t.id }}</td>
+          <td>{{ t.name }}</td>
+          <td>{{ t.window_days }}</td>
+          <td>{{ "是" if t.sync_adj_factor else "否" }}</td>
+          <td>{{ "%02d"|format(t.hour) }}:{{ "%02d"|format(t.minute) }}</td>
+          <td>{{ t.weekdays }}</td>
+          <td>{{ "启用" if t.enabled else "停用" }}</td>
+          <td class="actions">
+            <form method="post" action="/tasks/{{ t.id }}/toggle"><button type="submit">{{ "停用" if t.enabled else "启用" }}</button></form>
+            <form method="post" action="/tasks/{{ t.id }}/run"><button type="submit">立即执行</button></form>
+            <form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('确定删除这个任务吗？');"><button type="submit" class="danger">删除</button></form>
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not tasks %}
+        <tr><td colspan="8" class="muted">还没有任务</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <h2>最近执行日志</h2>
+    <table>
+      <thead><tr><th>时间</th><th>任务</th><th>状态</th><th>消息</th><th>响应摘要</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.run_at }}</td>
+          <td>{{ log.name or ("任务#" ~ log.task_id) }}</td>
+          <td>{{ log.status }}</td>
+          <td>{{ log.message }}</td>
+          <td><pre>{{ log.response_text }}</pre></td>
+        </tr>
+        {% endfor %}
+        {% if not logs %}
+        <tr><td colspan="5" class="muted">还没有执行记录</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

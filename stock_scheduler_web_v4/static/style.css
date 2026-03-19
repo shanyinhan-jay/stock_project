@@ -1,0 +1,11 @@
+body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f9;margin:0;color:#222}
+.container{max-width:1200px;margin:32px auto;padding:0 16px}.container.narrow{max-width:720px}
+h1,h2{margin:0 0 16px}.muted{color:#666}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;margin:12px 0 24px}
+th,td{border-bottom:1px solid #eee;padding:10px 12px;text-align:left;vertical-align:top}th{background:#fafafa}
+pre{white-space:pre-wrap;word-break:break-word;max-width:420px;margin:0}.actions{display:flex;gap:8px;flex-wrap:wrap}form{margin:0}
+button,.button{display:inline-block;background:#111;color:#fff;text-decoration:none;border:none;padding:8px 12px;border-radius:6px;cursor:pointer}
+.button.secondary{background:#666}button.danger{background:#b42318}
+.card{background:#fff;padding:20px;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.08)}
+label{display:block;font-weight:600;margin:12px 0 6px}input,textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:6px}
+.row{display:flex;gap:12px;margin-top:16px;align-items:center}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}
