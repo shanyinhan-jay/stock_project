@@ -4,6 +4,22 @@
   <meta charset="utf-8">
   <title>股票定时任务管理台</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    table.logs-table td,
+    table.logs-table th {
+      font-size: 12px;
+      line-height: 1.35;
+      vertical-align: top;
+    }
+    table.logs-table pre.response-summary {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -51,7 +67,7 @@
     </table>
 
     <h2>最近执行日志</h2>
-    <table>
+    <table class="logs-table">
       <thead><tr><th>时间</th><th>任务</th><th>状态</th><th>消息</th><th>响应摘要</th></tr></thead>
       <tbody>
         {% for log in logs %}
@@ -60,7 +76,7 @@
           <td>{{ log.name or ("任务#" ~ log.task_id) }}</td>
           <td>{{ log.status }}</td>
           <td>{{ log.message }}</td>
-          <td><pre>{{ log.response_text }}</pre></td>
+          <td><pre class="response-summary">{{ log.response_text }}</pre></td>
         </tr>
         {% endfor %}
         {% if not logs %}

@@ -86,8 +86,8 @@ def root():
             "/duckdb/scan/daily",
             "/health/a-share-status",
             "/screen/new-high",
+            "/query/adj-factor/{symbol}",
             "/screen/three-day-pattern",
-            "/screen/bullish-engulfing-volume",
             "/batch/sync/daily",
             "/batch/sync/adj-factor",
             "/batch/sync/minute",
@@ -1037,6 +1037,179 @@ def batch_sync_minute(req: BatchMinuteSyncRequest):
 
 
 
+@app.get("/query/adj-factor/{symbol}")
+def api_query_adj_factor(
+    symbol: str,
+    start_date: str = Query(..., description="开始日期，格式 YYYYMMDD"),
+    end_date: str = Query(..., description="结束日期，格式 YYYYMMDD"),
+):
+    try:
+        df = query_adj_factor_duckdb(symbol, start_date, end_date)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query adj_factor failed: {e}")
+
+    if df is None or df.empty:
+        return {
+            "message": "adj_factor query ok",
+            "symbol": symbol,
+            "start_date": start_date,
+            "end_date": end_date,
+            "rows": 0,
+            "columns": [],
+            "data": [],
+        }
+
+    if "trade_date" in df.columns:
+        try:
+            df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+
+    if "adj_factor" in df.columns:
+        df["adj_factor"] = pd.to_numeric(df["adj_factor"], errors="coerce")
+
+    preferred_cols = [c for c in ["ts_code", "trade_date", "adj_factor"] if c in df.columns]
+    if preferred_cols:
+        other_cols = [c for c in df.columns if c not in preferred_cols]
+        df = df[preferred_cols + other_cols]
+
+    return {
+        "message": "adj_factor query ok",
+        "symbol": symbol,
+        "start_date": start_date,
+        "end_date": end_date,
+        "rows": len(df),
+        "columns": list(df.columns),
+        "data": df.to_dict(orient="records"),
+    }
+
+
+def screen_five_day_bullish_volume(
+    trade_date: str,
+    adj: str = "qfq",
+    include_name: bool = True,
+):
+    if adj not in ("qfq", "hfq", "none"):
+        raise HTTPException(status_code=400, detail="adj must be one of: none, qfq, hfq")
+
+    target_dt = pd.to_datetime(trade_date, format="%Y%m%d")
+    start_dt = target_dt - pd.Timedelta(days=30)
+    start_date_sql = start_dt.strftime("%Y-%m-%d")
+    target_date_sql = target_dt.strftime("%Y-%m-%d")
+
+    daily_sql = """
+    SELECT *
+    FROM read_parquet('/data/daily/symbol=*/year=*.parquet')
+    WHERE CAST(trade_date AS DATE)
+          BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+    """
+    daily = con.execute(daily_sql, [start_date_sql, target_date_sql]).fetchdf()
+    if daily is None or daily.empty:
+        raise HTTPException(status_code=404, detail="no daily data found in local warehouse")
+
+    daily["trade_date"] = pd.to_datetime(daily["trade_date"])
+    for col in ["open", "high", "low", "close", "pre_close", "vol"]:
+        if col in daily.columns:
+            daily[col] = pd.to_numeric(daily[col], errors="coerce")
+
+    df = daily
+    if adj != "none":
+        adj_sql = """
+        SELECT ts_code, trade_date, adj_factor
+        FROM read_parquet('/data/adj_factor/symbol=*/year=*.parquet')
+        WHERE CAST(trade_date AS DATE)
+              BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)
+        """
+        adj_df = con.execute(adj_sql, [start_date_sql, target_date_sql]).fetchdf()
+        if adj_df is None or adj_df.empty:
+            raise HTTPException(status_code=404, detail="no adj_factor data found in local warehouse")
+
+        adj_df["trade_date"] = pd.to_datetime(adj_df["trade_date"])
+        adj_df["adj_factor"] = pd.to_numeric(adj_df["adj_factor"], errors="coerce")
+
+        df = daily.merge(adj_df, on=["ts_code", "trade_date"], how="left")
+        df = df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+
+        if adj == "qfq":
+            latest_factor = df.groupby("ts_code")["adj_factor"].transform("last")
+            for col in ["open", "high", "low", "close", "pre_close"]:
+                if col in df.columns:
+                    df[col] = df[col] * df["adj_factor"] / latest_factor
+        elif adj == "hfq":
+            for col in ["open", "high", "low", "close", "pre_close"]:
+                if col in df.columns:
+                    df[col] = df[col] * df["adj_factor"]
+
+    results = []
+    for ts_code, g in df.groupby("ts_code"):
+        g = g.sort_values("trade_date").reset_index(drop=True)
+        if len(g) < 5:
+            continue
+
+        g = g.tail(5).reset_index(drop=True)
+        d5 = g.iloc[-1]
+        if d5["trade_date"].strftime("%Y%m%d") != trade_date:
+            continue
+
+        bullish_ok = bool((g["close"] > g["open"]).all())
+        vol_ok = bool((g["vol"].diff().iloc[1:] > 0).all())
+
+        if bullish_ok and vol_ok:
+            results.append({
+                "ts_code": ts_code,
+                "pattern_trade_date": d5["trade_date"].strftime("%Y-%m-%d"),
+                "start_date": g.iloc[0]["trade_date"].strftime("%Y-%m-%d"),
+                "end_date": g.iloc[-1]["trade_date"].strftime("%Y-%m-%d"),
+                "day1_vol": g.iloc[0]["vol"],
+                "day2_vol": g.iloc[1]["vol"],
+                "day3_vol": g.iloc[2]["vol"],
+                "day4_vol": g.iloc[3]["vol"],
+                "day5_vol": g.iloc[4]["vol"],
+                "day1_close": g.iloc[0]["close"],
+                "day5_close": g.iloc[4]["close"],
+            })
+
+    result_df = pd.DataFrame(results).sort_values("ts_code") if results else pd.DataFrame(columns=[
+        "ts_code", "pattern_trade_date", "start_date", "end_date",
+        "day1_vol", "day2_vol", "day3_vol", "day4_vol", "day5_vol",
+        "day1_close", "day5_close",
+    ])
+
+    if include_name and not result_df.empty:
+        name_df = load_name_mapping()
+        if name_df is not None:
+            result_df = result_df.merge(name_df, on="ts_code", how="left")
+
+    preferred_cols = [
+        "ts_code", "name", "pattern_trade_date", "start_date", "end_date",
+        "day1_vol", "day2_vol", "day3_vol", "day4_vol", "day5_vol",
+        "day1_close", "day5_close",
+    ]
+    result_df = result_df[[c for c in preferred_cols if c in result_df.columns]]
+    return result_df
+
+
+@app.get("/screen/five-day-bullish-volume")
+def api_screen_five_day_bullish_volume(
+    trade_date: str,
+    adj: str = Query("qfq", description="复权方式: qfq/hfq/none"),
+    include_name: bool = Query(True, description="是否合并股票名称"),
+):
+    result_df = screen_five_day_bullish_volume(
+        trade_date=trade_date,
+        adj=adj,
+        include_name=include_name,
+    )
+    return {
+        "message": "screen five day bullish volume ok",
+        "trade_date": trade_date,
+        "adj": adj,
+        "rows": len(result_df),
+        "columns": list(result_df.columns),
+        "data": result_df.to_dict(orient="records"),
+    }
+
+
 def screen_bullish_engulfing_volume(
     trade_date: str,
     adj: str = "qfq",
@@ -1108,12 +1281,11 @@ def screen_bullish_engulfing_volume(
 
         g = g.tail(3).reset_index(drop=True)
         d0 = g.iloc[0]
-        d1 = g.iloc[1]  # 前一天：放量阴线
-        d2 = g.iloc[2]  # 当天：阳线反包
+        d1 = g.iloc[1]
+        d2 = g.iloc[2]
 
         if d2["trade_date"].strftime("%Y%m%d") != trade_date:
             continue
-
         if pd.isna(d1["pre_close"]) or d1["pre_close"] == 0 or pd.isna(d2["pre_close"]) or d2["pre_close"] == 0:
             continue
 
@@ -1126,8 +1298,7 @@ def screen_bullish_engulfing_volume(
             and d1["vol"] > d0["vol"]
             and d1_body_pct >= min_body_pct
         )
-
-        cond_today_bullish_engulf = (
+        cond_curr_engulf = (
             pd.notna(d2["open"]) and pd.notna(d2["close"]) and pd.notna(d2["vol"])
             and d2["close"] > d2["open"]
             and d2["open"] <= d1["close"]
@@ -1135,13 +1306,13 @@ def screen_bullish_engulfing_volume(
             and d2_body_pct >= min_body_pct
         )
 
-        cond_volume_mode = True
+        cond_volume = True
         if volume_mode == "shrink":
-            cond_volume_mode = pd.notna(d2["vol"]) and pd.notna(d1["vol"]) and d2["vol"] < d1["vol"]
+            cond_volume = pd.notna(d2["vol"]) and pd.notna(d1["vol"]) and d2["vol"] < d1["vol"]
         elif volume_mode == "expand":
-            cond_volume_mode = pd.notna(d2["vol"]) and pd.notna(d1["vol"]) and d2["vol"] > d1["vol"]
+            cond_volume = pd.notna(d2["vol"]) and pd.notna(d1["vol"]) and d2["vol"] > d1["vol"]
 
-        if cond_prev_bear and cond_today_bullish_engulf and cond_volume_mode:
+        if cond_prev_bear and cond_curr_engulf and cond_volume:
             results.append({
                 "ts_code": ts_code,
                 "pattern_trade_date": d2["trade_date"].strftime("%Y-%m-%d"),
@@ -1169,7 +1340,7 @@ def screen_bullish_engulfing_volume(
     if include_name and not result_df.empty:
         name_df = load_name_mapping()
         if name_df is not None:
-            result_df = result_df.merge(name_df, on=["ts_code"], how="left")
+            result_df = result_df.merge(name_df, on="ts_code", how="left")
 
     preferred_cols = [
         "ts_code", "name", "pattern_trade_date", "prev_date", "curr_date", "volume_mode", "min_body_pct",

@@ -120,6 +120,18 @@ def parse_symbols_text(symbols_text: str):
     return symbols
 
 
+def format_response_summary(payload):
+    if isinstance(payload, dict):
+        summary_keys = ["message", "total", "success", "no_data", "error", "sync_adj_factor"]
+        summary = {k: payload.get(k) for k in summary_keys if k in payload}
+        if summary:
+            return json.dumps(summary, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False)
+    if isinstance(payload, list):
+        return json.dumps(payload, ensure_ascii=False)
+    return str(payload)
+
+
 def run_task(task_id: int):
     task = load_task(task_id)
     if not task:
@@ -137,7 +149,11 @@ def run_task(task_id: int):
         resp = requests.post(BATCH_API_URL, json=payload, timeout=3600)
         status = "ok" if resp.ok else "error"
         message = f"HTTP {resp.status_code}"
-        log_run(task_id, status, message, resp.text)
+        try:
+            response_text = format_response_summary(resp.json())
+        except Exception:
+            response_text = resp.text
+        log_run(task_id, status, message, response_text)
     except Exception as e:
         log_run(task_id, "error", str(e), "")
 
@@ -408,3 +424,109 @@ def delete_task(task_id: int):
     conn.commit()
     conn.close()
     return RedirectResponse("/", status_code=303)
+
+
+@app.get("/screen/three-day-pattern", response_class=HTMLResponse)
+def screen_three_day_pattern_page(request: Request):
+    return templates.TemplateResponse(
+        "screen_three_day_pattern.html",
+        {
+            "request": request,
+            "stock_api_base_url": STOCK_API_BASE_URL,
+        },
+    )
+
+
+@app.post("/api/proxy/screen/three-day-pattern")
+def proxy_screen_three_day_pattern(
+    trade_date: str = Query(...),
+    adj: str = Query("qfq"),
+    include_name: bool = Query(True),
+):
+    url = f"{STOCK_API_BASE_URL}/screen/three-day-pattern"
+    params = {
+        "trade_date": trade_date,
+        "adj": adj,
+        "include_name": str(include_name).lower(),
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=300)
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {"detail": resp.text or "upstream returned non-json response"}
+        return JSONResponse(status_code=resp.status_code, content=payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")
+
+
+@app.get("/screen/five-day-bullish-volume", response_class=HTMLResponse)
+def screen_five_day_bullish_volume_page(request: Request):
+    return templates.TemplateResponse(
+        "screen_five_day_bullish_volume.html",
+        {
+            "request": request,
+            "stock_api_base_url": STOCK_API_BASE_URL,
+        },
+    )
+
+
+@app.post("/api/proxy/screen/five-day-bullish-volume")
+def proxy_screen_five_day_bullish_volume(
+    trade_date: str = Query(...),
+    adj: str = Query("qfq"),
+    include_name: bool = Query(True),
+):
+    url = f"{STOCK_API_BASE_URL}/screen/five-day-bullish-volume"
+    params = {
+        "trade_date": trade_date,
+        "adj": adj,
+        "include_name": str(include_name).lower(),
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=300)
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {"detail": resp.text or "upstream returned non-json response"}
+        return JSONResponse(status_code=resp.status_code, content=payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")
+
+
+@app.get("/screen/bullish-engulfing-volume", response_class=HTMLResponse)
+def screen_bullish_engulfing_volume_page(request: Request):
+    return templates.TemplateResponse(
+        "screen_bullish_engulfing_volume.html",
+        {
+            "request": request,
+            "stock_api_base_url": STOCK_API_BASE_URL,
+        },
+    )
+
+
+@app.post("/api/proxy/screen/bullish-engulfing-volume")
+def proxy_screen_bullish_engulfing_volume(
+    trade_date: str = Query(...),
+    adj: str = Query("qfq"),
+    include_name: bool = Query(True),
+    volume_mode: str = Query("any"),
+    min_body_pct: float = Query(0.01),
+):
+    url = f"{STOCK_API_BASE_URL}/screen/bullish-engulfing-volume"
+    params = {
+        "trade_date": trade_date,
+        "adj": adj,
+        "include_name": str(include_name).lower(),
+        "volume_mode": volume_mode,
+        "min_body_pct": min_body_pct,
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=300)
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {"detail": resp.text or "upstream returned non-json response"}
+        return JSONResponse(status_code=resp.status_code, content=payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"proxy request failed: {e}")
