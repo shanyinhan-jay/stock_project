@@ -120,6 +120,20 @@ def parse_symbols_text(symbols_text: str):
     return symbols
 
 
+def format_response_summary(payload):
+    if isinstance(payload, dict):
+        summary_keys = ["message", "total", "success", "no_data", "error", "sync_adj_factor"]
+        summary = {k: payload.get(k) for k in summary_keys if k in payload}
+        if summary:
+            return json.dumps(summary, ensure_ascii=False)
+        payload = {k: v for k, v in payload.items() if k != "results"}
+        return json.dumps(payload, ensure_ascii=False)
+    if isinstance(payload, list):
+        return json.dumps(payload, ensure_ascii=False)
+    return str(payload)
+
+
+
 def run_task(task_id: int):
     task = load_task(task_id)
     if not task:
@@ -137,7 +151,11 @@ def run_task(task_id: int):
         resp = requests.post(BATCH_API_URL, json=payload, timeout=3600)
         status = "ok" if resp.ok else "error"
         message = f"HTTP {resp.status_code}"
-        log_run(task_id, status, message, resp.text)
+        try:
+            response_text = format_response_summary(resp.json())
+        except Exception:
+            response_text = resp.text
+        log_run(task_id, status, message, response_text)
     except Exception as e:
         log_run(task_id, "error", str(e), "")
 
