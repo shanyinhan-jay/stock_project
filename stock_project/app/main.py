@@ -86,9 +86,9 @@ def root():
             "/duckdb/scan/daily",
             "/health/a-share-status",
             "/screen/new-high",
-            "/screen/limit-up-high-shrink-volume",
             "/screen/five-day-bullish-volume",
             "/screen/bullish-engulfing-volume",
+            "/screen/limit-up-high-shrink-volume",
             "/query/adj-factor/{symbol}",
             "/screen/three-day-pattern",
             "/batch/sync/daily",
@@ -1110,9 +1110,8 @@ def screen_limit_up_high_shrink_volume(
         raise HTTPException(status_code=400, detail="limit_up_lookback_days must be between 1 and 250")
 
     target_dt = pd.to_datetime(trade_date, format="%Y%m%d")
-    limit_up_start_dt = target_dt - pd.Timedelta(days=limit_up_lookback_days)
-
-    start_dt = min(limit_up_start_dt, target_dt - pd.Timedelta(days=max(500, trading_days * 3)))
+    signal_start_dt = target_dt - pd.Timedelta(days=limit_up_lookback_days)
+    start_dt = min(signal_start_dt, target_dt - pd.Timedelta(days=max(500, trading_days * 3)))
     start_date_sql = start_dt.strftime("%Y-%m-%d")
     target_date_sql = target_dt.strftime("%Y-%m-%d")
 
@@ -1163,80 +1162,81 @@ def screen_limit_up_high_shrink_volume(
 
     for ts_code, g in df.groupby("ts_code"):
         g = g.sort_values("trade_date").reset_index(drop=True)
-        if len(g) < trading_days + 3:
-            continue
-
-        raw_g = daily[daily["ts_code"] == ts_code].sort_values("trade_date").reset_index(drop=True)
-        if raw_g.empty:
+        if len(g) < trading_days + 2:
             continue
 
         if g[g["trade_date"] == target_dt].empty:
             continue
 
-        for idx in range(1, len(g) - 1):
-            limit_day = g.iloc[idx]
-            if limit_day["trade_date"] < limit_up_start_dt:
-                continue
-            if limit_day["trade_date"] > target_dt:
-                break
+        signal_candidates = g[
+            (g["trade_date"] >= signal_start_dt) &
+            (g["trade_date"] <= target_dt)
+        ].copy()
 
-            raw_match = raw_g[raw_g["trade_date"] == limit_day["trade_date"]]
-            if raw_match.empty:
-                continue
-            raw_row = raw_match.iloc[0]
-            limit_price = _calc_limit_up_price(raw_row["pre_close"])
-            if limit_price is None or pd.isna(raw_row["close"]) or pd.isna(raw_row["high"]):
-                continue
+        chosen_signal = None
 
-            if not (abs(float(raw_row["close"]) - limit_price) <= 0.02 and abs(float(raw_row["high"]) - limit_price) <= 0.02):
+        for signal_date in reversed(signal_candidates["trade_date"].tolist()):
+            match_idx = g.index[g["trade_date"] == signal_date]
+            if len(match_idx) == 0:
                 continue
+            idx = int(match_idx[-1])
 
-            window = g[g["trade_date"] <= limit_day["trade_date"]].tail(trading_days).copy()
+            window = g.iloc[:idx + 1].tail(trading_days).copy()
             if len(window) < min(10, trading_days):
                 continue
 
-            if pd.isna(limit_day["high"]) or pd.isna(limit_day["vol"]):
-                continue
-            if float(limit_day["high"]) < float(window["high"].max()) or float(limit_day["vol"]) < float(window["vol"].max()):
-                continue
-
-            follow = g[(g["trade_date"] > limit_day["trade_date"]) & (g["trade_date"] <= target_dt)].copy()
-            if follow.empty:
+            signal_row = g.iloc[idx]
+            if pd.isna(signal_row["high"]) or pd.isna(signal_row["low"]) or pd.isna(signal_row["vol"]):
                 continue
 
-            vol_series = [float(limit_day["vol"])] + [float(v) for v in follow["vol"].tolist() if pd.notna(v)]
-            if len(vol_series) != len(follow) + 1:
+            if float(signal_row["high"]) < float(window["high"].max()):
                 continue
-            if not all(vol_series[i + 1] < vol_series[i] for i in range(len(vol_series) - 1)):
-                continue
-
-            if pd.isna(limit_day["low"]) or (follow["low"] < float(limit_day["low"])).any():
+            if float(signal_row["vol"]) < float(window["vol"].max()):
                 continue
 
-            latest = follow.iloc[-1]
-            if latest["trade_date"] != target_dt:
-                continue
-
-            results.append({
-                "ts_code": ts_code,
-                "pattern_trade_date": target_dt.strftime("%Y-%m-%d"),
-                "limit_up_start_date": limit_up_start_dt.strftime("%Y-%m-%d"),
-                "limit_up_date": limit_day["trade_date"].strftime("%Y-%m-%d"),
-                "trading_days": trading_days,
-                "limit_up_lookback_days": limit_up_lookback_days,
-                "limit_up_high": limit_day["high"],
-                "limit_up_low": limit_day["low"],
-                "limit_up_vol": limit_day["vol"],
-                "latest_close": latest["close"],
-                "latest_low": latest["low"],
-                "days_after_limit_up": len(follow),
-            })
+            chosen_signal = signal_row
             break
 
-    result_df = pd.DataFrame(results).sort_values(["limit_up_date", "ts_code"]) if results else pd.DataFrame(columns=[
-        "ts_code", "pattern_trade_date", "limit_up_start_date", "limit_up_date",
-        "trading_days", "limit_up_lookback_days", "limit_up_high", "limit_up_low", "limit_up_vol",
-        "latest_close", "latest_low", "days_after_limit_up",
+        if chosen_signal is None:
+            continue
+
+        follow = g[(g["trade_date"] > chosen_signal["trade_date"]) & (g["trade_date"] <= target_dt)].copy()
+        if follow.empty:
+            continue
+
+        vol_series = [float(chosen_signal["vol"])] + [float(v) for v in follow["vol"].tolist() if pd.notna(v)]
+        if len(vol_series) != len(follow) + 1:
+            continue
+
+        if not all(vol_series[i + 1] < vol_series[i] for i in range(len(vol_series) - 1)):
+            continue
+
+        if (follow["low"] < float(chosen_signal["low"])).any():
+            continue
+
+        latest = follow.iloc[-1]
+        if latest["trade_date"] != target_dt:
+            continue
+
+        results.append({
+            "ts_code": ts_code,
+            "pattern_trade_date": target_dt.strftime("%Y-%m-%d"),
+            "signal_start_date": signal_start_dt.strftime("%Y-%m-%d"),
+            "signal_date": chosen_signal["trade_date"].strftime("%Y-%m-%d"),
+            "trading_days": trading_days,
+            "limit_up_lookback_days": limit_up_lookback_days,
+            "signal_high": chosen_signal["high"],
+            "signal_low": chosen_signal["low"],
+            "signal_vol": chosen_signal["vol"],
+            "latest_close": latest["close"],
+            "latest_low": latest["low"],
+            "days_after_signal": len(follow),
+        })
+
+    result_df = pd.DataFrame(results).sort_values(["signal_date", "ts_code"]) if results else pd.DataFrame(columns=[
+        "ts_code", "pattern_trade_date", "signal_start_date", "signal_date",
+        "trading_days", "limit_up_lookback_days", "signal_high", "signal_low", "signal_vol",
+        "latest_close", "latest_low", "days_after_signal",
     ])
 
     if include_name and not result_df.empty:
@@ -1245,9 +1245,9 @@ def screen_limit_up_high_shrink_volume(
             result_df = result_df.merge(name_df, on="ts_code", how="left")
 
     preferred_cols = [
-        "ts_code", "name", "pattern_trade_date", "limit_up_start_date", "limit_up_date",
-        "trading_days", "limit_up_lookback_days", "limit_up_high", "limit_up_low", "limit_up_vol",
-        "latest_close", "latest_low", "days_after_limit_up",
+        "ts_code", "name", "pattern_trade_date", "signal_start_date", "signal_date",
+        "trading_days", "limit_up_lookback_days", "signal_high", "signal_low", "signal_vol",
+        "latest_close", "latest_low", "days_after_signal",
     ]
     result_df = result_df[[c for c in preferred_cols if c in result_df.columns]]
     return result_df

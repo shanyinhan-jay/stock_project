@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>涨停新高后缩量整理筛选</title>
+  <title>创新高后缩量整理筛选</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
     #result-table {
@@ -26,7 +26,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>涨停新高后缩量整理筛选</h1>
+    <h1>创新高后缩量整理筛选</h1>
     <p class="muted">由 8010 后端代理调用 8000 的 <code>/screen/limit-up-high-shrink-volume</code> 接口。</p>
 
     <p>
@@ -64,10 +64,10 @@
 
     <h3>形态定义</h3>
     <div class="card muted">
-      先从“交易日”向前追溯指定天数，在这个区间内找一根涨停板，且该日的股价与成交量同时创窗口新高（60/120/250日可选）；<br>
-      在这根涨停板之后，到目标交易日之间：<br>
+      先从“交易日”向前追溯指定天数，在这个区间内找一根最近的创新高K线，且该日股价的最高点与成交量同时创窗口新高（60/120/250日可选）；<br>
+      在这根K线之后，到目标交易日之间：<br>
       1）成交量每日递减；<br>
-      2）股价最低点始终未跌破涨停板当日最低点。
+      2）股价最低点始终未跌破该创新高K线当日最低点。
     </div>
 
     <h3>筛选结果摘要</h3>
@@ -118,7 +118,7 @@ function exportCurrentCsv() {
 
   const tradeDate = document.getElementById("trade_date").value.trim() || "unknown";
   const tradingDays = document.getElementById("trading_days").value;
-  const filename = `limit_up_high_shrink_volume_${tradeDate}_${tradingDays}.csv`;
+  const filename = `recent_new_high_shrink_volume_${tradeDate}_${tradingDays}.csv`;
 
   const link = document.createElement("a");
   link.href = url;
