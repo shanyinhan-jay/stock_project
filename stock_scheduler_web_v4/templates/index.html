@@ -2,16 +2,302 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>股票定时任务管理台</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    table.logs-table td,
-    table.logs-table th {
-      font-size: 12px;
-      line-height: 1.35;
-      vertical-align: top;
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #fafafa;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --line-strong: #d1d5db;
+      --accent: #111827;
+      --shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+      --radius: 16px;
+      --radius-sm: 12px;
     }
-    table.logs-table pre.response-summary {
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+
+    .page-header {
+      margin-bottom: 22px;
+    }
+
+    .page-title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .page-subtitle {
+      margin: 8px 0 0;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .surface {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .section {
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .tabbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .tab-btn, .button, button {
+      height: 42px;
+      padding: 0 16px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all .15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tab-btn {
+      background: #fff;
+      color: var(--text);
+      border-color: var(--line);
+    }
+
+    .tab-btn.active,
+    button[type="submit"] {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .button.secondary,
+    button.secondary,
+    .tab-btn:hover {
+      background: #f9fafb;
+      color: var(--text);
+      border-color: var(--line-strong);
+    }
+
+    button[type="submit"]:hover { opacity: .92; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    .muted { color: var(--muted); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    form.screen-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 260px)) 1fr;
+      gap: 14px 16px;
+      align-items: end;
+    }
+
+    .task-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      gap: 14px 16px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+      font-family: inherit;
+    }
+
+    input, select { height: 42px; }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: #9ca3af;
+      box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.06);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .definition {
+      background: var(--panel-soft);
+    }
+
+    .definition ol {
+      margin: 10px 0 0 20px;
+      padding: 0;
+    }
+
+    .definition li + li {
+      margin-top: 6px;
+    }
+
+    .summary-box {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-height: 62px;
+      align-items: center;
+    }
+
+    .summary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #f9fafb;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .summary-chip strong {
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .table-shell {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .data-table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+
+    .data-table thead th,
+    .logs-table thead th,
+    .task-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f9fafb;
+      color: #374151;
+      font-weight: 700;
+    }
+
+    .data-table th,
+    .data-table td,
+    .logs-table th,
+    .logs-table td,
+    .task-table th,
+    .task-table td {
+      padding: 10px 12px;
+      text-align: left;
+      white-space: nowrap;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+    }
+
+    .data-table tbody tr:hover,
+    .logs-table tbody tr:hover,
+    .task-table tbody tr:hover {
+      background: #fafafa;
+    }
+
+    .data-table th.name-col,
+    .data-table td.name-col {
+      min-width: 160px;
+      max-width: 240px;
+    }
+
+    .empty-row td {
+      color: var(--muted);
+      text-align: center;
+      padding: 28px 16px;
+    }
+
+    .check-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+    }
+
+    .check-inline input {
+      width: auto;
+      height: auto;
+      margin: 0;
+    }
+
+    pre.response-summary {
       margin: 0;
       font-size: 12px;
       line-height: 1.35;
@@ -19,72 +305,402 @@
       word-break: break-word;
       font-family: inherit;
     }
+
+    @media (max-width: 920px) {
+      .container {
+        padding: 20px 14px 36px;
+      }
+      .page-title {
+        font-size: 24px;
+      }
+      form.screen-form,
+      .task-form {
+        grid-template-columns: 1fr;
+      }
+      .tab-btn {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>股票定时任务管理台</h1>
-    <p class="muted">批量接口地址：{{ batch_api_url }}</p>
-    <p class="muted">股票 API 根地址：{{ stock_api_base_url }}</p>
+    <div class="page-header">
+      <h1 class="page-title">股票定时任务管理台</h1>
+      <p class="page-subtitle">合并版单文件页面：整合任务总览、新建/编辑任务，以及新高筛选、三日形态筛选、五连阳放量筛选、阳线反包放量阴线筛选、创新高后缩量整理筛选，整体样式参考五连阳放量筛选页。</p>
+    </div>
 
-    <p>
-      <a class="button" href="/tasks/new">新建任务</a>
-      <a class="button" href="/screen/new-high">新高筛选</a>
-      <a class="button" href="/screen/three-day-pattern">三日形态筛选</a>
-      <a class="button" href="/screen/five-day-bullish-volume">五连阳放量筛选</a>
-      <a class="button" href="/screen/bullish-engulfing-volume">阳线反包放量阴线筛选</a>
-      <a class="button" href="/screen/limit-up-high-shrink-volume">涨停新高后缩量整理筛选</a>
-    </p>
+    <div class="tabbar">
+      <button class="tab-btn active" data-tab="dashboard">任务总览</button>
+      <button class="tab-btn" data-tab="task-form">新建/编辑任务</button>
+      <button class="tab-btn" data-tab="new-high">新高筛选</button>
+      <button class="tab-btn" data-tab="three-day">三日形态筛选</button>
+      <button class="tab-btn" data-tab="five-day">五连阳放量筛选</button>
+      <button class="tab-btn" data-tab="engulfing">阳线反包放量阴线</button>
+      <button class="tab-btn" data-tab="recent-high-shrink">创新高后缩量整理</button>
+    </div>
 
-    <h2>任务列表</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th><th>名称</th><th>窗口天数</th><th>复权因子</th><th>执行时间</th><th>星期</th><th>状态</th><th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for t in tasks %}
-        <tr>
-          <td>{{ t.id }}</td>
-          <td>{{ t.name }}</td>
-          <td>{{ t.window_days }}</td>
-          <td>{{ "是" if t.sync_adj_factor else "否" }}</td>
-          <td>{{ "%02d"|format(t.hour) }}:{{ "%02d"|format(t.minute) }}</td>
-          <td>{{ t.weekdays }}</td>
-          <td>{{ "启用" if t.enabled else "停用" }}</td>
-          <td class="actions">
-            <a class="button secondary" href="/tasks/{{ t.id }}/edit">编辑</a>
-            <form method="post" action="/tasks/{{ t.id }}/toggle"><button type="submit">{{ "停用" if t.enabled else "启用" }}</button></form>
-            <form method="post" action="/tasks/{{ t.id }}/run"><button type="submit">立即执行</button></form>
-            <form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('确定删除这个任务吗？');"><button type="submit" class="danger">删除</button></form>
-          </td>
-        </tr>
-        {% endfor %}
-        {% if not tasks %}
-        <tr><td colspan="8" class="muted">还没有任务</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
+    <section class="tab-panel active" id="tab-dashboard">
+      <div class="surface section">
+        <div class="section-title">任务列表</div>
+        <div class="table-shell">
+          <table class="task-table">
+            <thead>
+              <tr>
+                <th>ID</th><th>名称</th><th>窗口天数</th><th>复权因子</th><th>执行时间</th><th>星期</th><th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in tasks %}
+              <tr>
+                <td>{{ t.id }}</td>
+                <td>{{ t.name }}</td>
+                <td>{{ t.window_days }}</td>
+                <td>{{ "是" if t.sync_adj_factor else "否" }}</td>
+                <td>{{ "%02d"|format(t.hour) }}:{{ "%02d"|format(t.minute) }}</td>
+                <td>{{ t.weekdays }}</td>
+                <td>{{ "启用" if t.enabled else "停用" }}</td>
+                <td class="actions">
+                  <a class="button secondary" href="/tasks/{{ t.id }}/edit">编辑</a>
+                  <form method="post" action="/tasks/{{ t.id }}/toggle"><button type="submit">{{ "停用" if t.enabled else "启用" }}</button></form>
+                  <form method="post" action="/tasks/{{ t.id }}/run"><button type="submit">立即执行</button></form>
+                  <form method="post" action="/tasks/{{ t.id }}/delete" onsubmit="return confirm('确定删除这个任务吗？');"><button type="submit" class="secondary">删除</button></form>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not tasks %}
+              <tr class="empty-row"><td colspan="8">还没有任务</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-    <h2>最近执行日志</h2>
-    <table class="logs-table">
-      <thead><tr><th>时间</th><th>任务</th><th>状态</th><th>消息</th><th>响应摘要</th></tr></thead>
-      <tbody>
-        {% for log in logs %}
-        <tr>
-          <td>{{ log.run_at }}</td>
-          <td>{{ log.name or ("任务#" ~ log.task_id) }}</td>
-          <td>{{ log.status }}</td>
-          <td>{{ log.message }}</td>
-          <td><pre class="response-summary">{{ log.response_text }}</pre></td>
-        </tr>
-        {% endfor %}
-        {% if not logs %}
-        <tr><td colspan="5" class="muted">还没有执行记录</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
+      <div class="surface section">
+        <div class="section-title">最近执行日志</div>
+        <div class="table-shell">
+          <table class="logs-table">
+            <thead><tr><th>时间</th><th>任务</th><th>状态</th><th>消息</th><th>响应摘要</th></tr></thead>
+            <tbody>
+              {% for log in logs %}
+              <tr>
+                <td>{{ log.run_at }}</td>
+                <td>{{ log.name or ("任务#" ~ log.task_id) }}</td>
+                <td>{{ log.status }}</td>
+                <td>{{ log.message }}</td>
+                <td><pre class="response-summary">{{ log.response_text }}</pre></td>
+              </tr>
+              {% endfor %}
+              {% if not logs %}
+              <tr class="empty-row"><td colspan="5">还没有执行记录</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-task-form">
+      <div class="surface section">
+        <div class="section-title">{{ page_title or '新建任务' }}</div>
+        <form method="post" action="{{ form_action or '/tasks/new' }}" class="task-form">
+          <div class="field">
+            <label>任务名称</label>
+            <input name="name" placeholder="例如：上证股票日更" value="{{ task.name if task else '' }}" required>
+          </div>
+          <div class="field">
+            <label>更新窗口天数</label>
+            <input type="number" name="window_days" value="{{ task.window_days if task else 7 }}" min="1" max="365">
+          </div>
+          <div class="field">
+            <label>执行小时</label>
+            <input type="number" name="hour" value="{{ task.hour if task else 18 }}" min="0" max="23">
+          </div>
+          <div class="field">
+            <label>执行分钟</label>
+            <input type="number" name="minute" value="{{ task.minute if task else 30 }}" min="0" max="59">
+          </div>
+          <div class="field full">
+            <label>股票代码</label>
+            <textarea name="symbols_text" placeholder="每行一个，或逗号分隔，支持带引号格式，例如&#10;&quot;000001.SZ&quot;, &quot;000002.SZ&quot;, &quot;000004.SZ&quot;" required>{{ symbols_text or "" }}</textarea>
+          </div>
+          <div class="field">
+            <label>星期</label>
+            <input name="weekdays" value="{{ task.weekdays if task else 'mon-fri' }}" placeholder="例如 mon-fri 或 mon,wed,fri">
+          </div>
+          <div class="field check-inline">
+            <input type="checkbox" name="sync_adj_factor" {% if task %}{% if task.sync_adj_factor %}checked{% endif %}{% else %}checked{% endif %}>
+            <label>同步复权因子</label>
+          </div>
+          <div class="field check-inline">
+            <input type="checkbox" name="enabled" {% if task %}{% if task.enabled %}checked{% endif %}{% else %}checked{% endif %}>
+            <label>{{ "编辑后保持启用" if task else "创建后立即启用" }}</label>
+          </div>
+          <div class="actions field full">
+            <button type="submit">{{ submit_label or "保存任务" }}</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="tab-new-high">
+      <div class="surface section">
+        <div class="section-title">新高筛选</div>
+        <form class="screen-form" data-kind="new-high">
+          <div class="field"><label>交易日</label><input type="text" name="trade_date" required></div>
+          <div class="field"><label>交易日窗口</label><select name="trading_days"><option value="250" selected>250 日</option><option value="120">120 日</option><option value="60">60 日</option></select></div>
+          <div class="field"><label>最近触发天数</label><input type="number" name="recent_days" value="5" min="1" max="30"></div>
+          <div class="field"><label>复权方式</label><select name="adj"><option value="qfq" selected>前复权 qfq</option><option value="hfq">后复权 hfq</option><option value="none">不复权 none</option></select></div>
+          <div class="field"><label>新高口径</label><select name="price_field"><option value="high" selected>最高价 high</option><option value="close">收盘价 close</option></select></div>
+          <div class="field"><label>长上影线</label><select name="upper_shadow_filter"><option value="any" selected>不限</option><option value="yes">仅带长上影线</option><option value="no">仅不带长上影线</option></select></div>
+          <div class="actions"><button type="submit">开始筛选</button><button type="button" class="secondary export-btn" disabled>导出当前结果 CSV</button></div>
+        </form>
+      </div>
+      <div class="surface section"><div class="section-title">筛选结果摘要</div><div class="summary-box muted" data-summary>还没有执行筛选。</div></div>
+      <div class="surface section"><div class="section-title">筛选结果预览</div><div class="table-shell"><table class="data-table"><thead></thead><tbody></tbody></table></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-three-day">
+      <div class="surface section">
+        <div class="section-title">三日形态筛选</div>
+        <form class="screen-form" data-kind="three-day">
+          <div class="field"><label>交易日</label><input type="text" name="trade_date" required></div>
+          <div class="field"><label>复权方式</label><select name="adj"><option value="qfq" selected>前复权 qfq</option><option value="hfq">后复权 hfq</option><option value="none">不复权 none</option></select></div>
+          <div class="actions"><button type="submit">开始筛选</button><button type="button" class="secondary export-btn" disabled>导出当前结果 CSV</button></div>
+        </form>
+      </div>
+      <div class="surface section definition muted">
+        <div class="section-title">形态定义</div>
+        <ol>
+          <li>第一个交易日收阴线，且成交量大于其前一个交易日。</li>
+          <li>第二个交易日低开、收阳线，且成交量小于第一个交易日。</li>
+          <li>第三个交易日高开、收阳线。</li>
+        </ol>
+      </div>
+      <div class="surface section"><div class="section-title">筛选结果摘要</div><div class="summary-box muted" data-summary>还没有执行筛选。</div></div>
+      <div class="surface section"><div class="section-title">筛选结果预览</div><div class="table-shell"><table class="data-table"><thead></thead><tbody></tbody></table></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-five-day">
+      <div class="surface section">
+        <div class="section-title">五连阳放量筛选</div>
+        <form class="screen-form" data-kind="five-day">
+          <div class="field"><label>交易日</label><input type="text" name="trade_date" required></div>
+          <div class="field"><label>复权方式</label><select name="adj"><option value="qfq" selected>前复权 qfq</option><option value="hfq">后复权 hfq</option><option value="none">不复权 none</option></select></div>
+          <div class="actions"><button type="submit">开始筛选</button><button type="button" class="secondary export-btn" disabled>导出当前结果 CSV</button></div>
+        </form>
+      </div>
+      <div class="surface section definition muted">
+        <div class="section-title">形态定义</div>
+        <ol>
+          <li>最近连续 5 个交易日全部为阳线（收盘价 &gt; 开盘价）。</li>
+          <li>成交量严格逐日放大。</li>
+        </ol>
+      </div>
+      <div class="surface section"><div class="section-title">筛选结果摘要</div><div class="summary-box muted" data-summary>还没有执行筛选。</div></div>
+      <div class="surface section"><div class="section-title">筛选结果预览</div><div class="table-shell"><table class="data-table"><thead></thead><tbody></tbody></table></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-engulfing">
+      <div class="surface section">
+        <div class="section-title">阳线反包放量阴线筛选</div>
+        <form class="screen-form" data-kind="engulfing">
+          <div class="field"><label>交易日</label><input type="text" name="trade_date" required></div>
+          <div class="field"><label>复权方式</label><select name="adj"><option value="qfq" selected>前复权 qfq</option><option value="hfq">后复权 hfq</option><option value="none">不复权 none</option></select></div>
+          <div class="field"><label>当天较前一天成交量</label><select name="volume_mode"><option value="any" selected>不限</option><option value="shrink">缩量</option><option value="expand">放量</option></select></div>
+          <div class="field"><label>最小实体比例</label><input type="number" name="min_body_pct" value="0.01" min="0" max="0.2" step="0.001"></div>
+          <div class="actions"><button type="submit">开始筛选</button><button type="button" class="secondary export-btn" disabled>导出当前结果 CSV</button></div>
+        </form>
+      </div>
+      <div class="surface section definition muted">
+        <div class="section-title">形态定义</div>
+        <ol>
+          <li>前一天为放量阴线。</li>
+          <li>当天为阳线反包。</li>
+          <li>当天成交量可选：不限 / 缩量 / 放量。</li>
+          <li>前一天和当天实体比例不低于最小实体比例。</li>
+        </ol>
+      </div>
+      <div class="surface section"><div class="section-title">筛选结果摘要</div><div class="summary-box muted" data-summary>还没有执行筛选。</div></div>
+      <div class="surface section"><div class="section-title">筛选结果预览</div><div class="table-shell"><table class="data-table"><thead></thead><tbody></tbody></table></div></div>
+    </section>
+
+    <section class="tab-panel" id="tab-recent-high-shrink">
+      <div class="surface section">
+        <div class="section-title">创新高后缩量整理筛选</div>
+        <form class="screen-form" data-kind="recent-high-shrink">
+          <div class="field"><label>交易日</label><input type="text" name="trade_date" required></div>
+          <div class="field"><label>新高窗口</label><select name="trading_days"><option value="60" selected>60日</option><option value="120">120日</option><option value="250">250日</option></select></div>
+          <div class="field"><label>向前追溯天数</label><input type="number" name="limit_up_lookback_days" value="20" min="1" max="250"></div>
+          <div class="field"><label>复权方式</label><select name="adj"><option value="qfq" selected>前复权 qfq</option><option value="hfq">后复权 hfq</option><option value="none">不复权 none</option></select></div>
+          <div class="actions"><button type="submit">开始筛选</button><button type="button" class="secondary export-btn" disabled>导出当前结果 CSV</button></div>
+        </form>
+      </div>
+      <div class="surface section definition muted">
+        <div class="section-title">形态定义</div>
+        <ol>
+          <li>从交易日向前追溯指定天数，找最近的创新高 K 线。</li>
+          <li>该 K 线最高点与成交量同时创窗口新高。</li>
+          <li>之后到目标交易日之间，成交量每日递减。</li>
+          <li>股价最低点始终未跌破该创新高 K 线当日最低点。</li>
+        </ol>
+      </div>
+      <div class="surface section"><div class="section-title">筛选结果摘要</div><div class="summary-box muted" data-summary>还没有执行筛选。</div></div>
+      <div class="surface section"><div class="section-title">筛选结果预览</div><div class="table-shell"><table class="data-table"><thead></thead><tbody></tbody></table></div></div>
+    </section>
   </div>
+
+<script>
+const apiMap = {
+  "new-high": {
+    path: "/api/proxy/screen/new-high",
+    filename: (f) => `new_high_${f.trade_date}_${f.trading_days}d_recent${f.recent_days}_${f.price_field}_${f.upper_shadow_filter}.csv`,
+    summary: (d) => [["交易日", d.trade_date], ["窗口", d.trading_days], ["最近天数", d.recent_days], ["复权", d.adj], ["口径", d.price_field], ["长上影线", d.upper_shadow_filter], ["结果数", d.rows]],
+  },
+  "three-day": {
+    path: "/api/proxy/screen/three-day-pattern",
+    filename: (f) => `three_day_pattern_${f.trade_date}_${f.adj}.csv`,
+    summary: (d) => [["交易日", d.trade_date], ["复权", d.adj], ["结果数", d.rows]],
+  },
+  "five-day": {
+    path: "/api/proxy/screen/five-day-bullish-volume",
+    filename: (f) => `five_day_bullish_volume_${f.trade_date}.csv`,
+    summary: (d) => [["交易日", d.trade_date], ["复权", d.adj], ["结果数", d.rows]],
+  },
+  "engulfing": {
+    path: "/api/proxy/screen/bullish-engulfing-volume",
+    filename: (f) => `bullish_engulfing_volume_${f.trade_date}.csv`,
+    summary: (d) => [["交易日", d.trade_date], ["复权", d.adj], ["成交量要求", d.volume_mode], ["最小实体比例", d.min_body_pct], ["结果数", d.rows]],
+  },
+  "recent-high-shrink": {
+    path: "/api/proxy/screen/limit-up-high-shrink-volume",
+    filename: (f) => `recent_new_high_shrink_volume_${f.trade_date}_${f.trading_days}.csv`,
+    summary: (d) => [["交易日", d.trade_date], ["追溯天数", d.limit_up_lookback_days], ["窗口", d.trading_days], ["复权", d.adj], ["结果数", d.rows]],
+  },
+};
+
+const state = {};
+
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+function toCsvValue(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function renderSummary(node, pairs) {
+  node.classList.remove("muted");
+  node.innerHTML = pairs.map(([k, v]) => `<span class="summary-chip"><span>${k}</span><strong>${v}</strong></span>`).join("");
+}
+
+function applyNameCol(table, columns) {
+  const nameIndex = columns.indexOf("name");
+  if (nameIndex < 0) return;
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  const nameTh = thead.querySelector(`th:nth-child(${nameIndex + 1})`);
+  if (nameTh) nameTh.classList.add("name-col");
+  tbody.querySelectorAll("tr").forEach(tr => {
+    const td = tr.querySelector(`td:nth-child(${nameIndex + 1})`);
+    if (td) td.classList.add("name-col");
+  });
+}
+
+function exportCsv(kind, form) {
+  const s = state[kind];
+  if (!s || !s.rows?.length || !s.columns?.length) return;
+  const lines = [];
+  lines.push(s.columns.map(toCsvValue).join(","));
+  s.rows.forEach(row => lines.push(s.columns.map(col => toCsvValue(row[col])).join(",")));
+  const csvContent = "\ufeff" + lines.join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const fields = Object.fromEntries(new FormData(form).entries());
+  const filename = apiMap[kind].filename(fields);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function initTabs() {
+  const btns = document.querySelectorAll(".tab-btn");
+  const panels = document.querySelectorAll(".tab-panel");
+  btns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      btns.forEach(b => b.classList.toggle("active", b === btn));
+      panels.forEach(p => p.classList.toggle("active", p.id === `tab-${tab}`));
+    });
+  });
+}
+
+function initForms() {
+  document.querySelectorAll("form.screen-form").forEach(form => {
+    const kind = form.dataset.kind;
+    const panel = form.closest(".tab-panel");
+    const summaryNode = panel.querySelector("[data-summary]");
+    const table = panel.querySelector(".data-table");
+    const exportBtn = panel.querySelector(".export-btn");
+
+    form.querySelectorAll('input[name="trade_date"]').forEach(i => i.value = todayStr());
+    exportBtn.addEventListener("click", () => exportCsv(kind, form));
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fields = Object.fromEntries(new FormData(form).entries());
+      const query = new URLSearchParams({ ...fields, include_name: "true" }).toString();
+      const url = `${apiMap[kind].path}?${query}`;
+
+      summaryNode.classList.add("muted");
+      summaryNode.textContent = "筛选中...";
+      table.querySelector("thead").innerHTML = "";
+      table.querySelector("tbody").innerHTML = "";
+      exportBtn.disabled = true;
+      state[kind] = { rows: [], columns: [] };
+
+      try {
+        const resp = await fetch(url, { method: "POST" });
+        const data = await resp.json();
+        if (!resp.ok) {
+          summaryNode.textContent = data.detail || "筛选失败";
+          return;
+        }
+        renderSummary(summaryNode, apiMap[kind].summary(data));
+        const rows = data.data || [];
+        if (!rows.length) {
+          table.querySelector("thead").innerHTML = "";
+          table.querySelector("tbody").innerHTML = "<tr class='empty-row'><td>没有结果</td></tr>";
+          return;
+        }
+        const columns = Object.keys(rows[0]);
+        state[kind] = { rows, columns };
+        exportBtn.disabled = false;
+        table.querySelector("thead").innerHTML = "<tr>" + columns.map(c => `<th>${c}</th>`).join("") + "</tr>";
+        table.querySelector("tbody").innerHTML = rows.slice(0, 300).map(r => "<tr>" + columns.map(c => `<td>${r[c] ?? ""}</td>`).join("") + "</tr>").join("");
+        applyNameCol(table, columns);
+      } catch (err) {
+        summaryNode.textContent = "请求失败: " + err;
+      }
+    });
+  });
+}
+
+initTabs();
+initForms();
+</script>
 </body>
 </html>
